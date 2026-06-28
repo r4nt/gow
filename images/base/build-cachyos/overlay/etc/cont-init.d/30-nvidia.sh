@@ -36,15 +36,25 @@ if [ -d /usr/nvidia ]; then
     cp /usr/nvidia/lib/gbm/* /usr/lib/gbm/
   fi
 # Check if there's libnvidia-allocator.so.1
-elif [ -e /usr/lib/libnvidia-allocator.so.1 ]; then
+elif [ -e /usr/lib/libnvidia-allocator.so.1 ] || [ -e /usr/lib/x86_64-linux-gnu/libnvidia-allocator.so.1 ] || [ -e /usr/lib64/libnvidia-allocator.so.1 ]; then
   gow_log "Nvidia driver detected, assuming nvidia container toolkit is installed"
+  
+  if [ -e /usr/lib/libnvidia-allocator.so.1 ]; then
+    _libdir="/usr/lib"
+  elif [ -e /usr/lib/x86_64-linux-gnu/libnvidia-allocator.so.1 ]; then
+    _libdir="/usr/lib/x86_64-linux-gnu"
+    echo "/usr/lib/x86_64-linux-gnu" > /etc/ld.so.conf.d/nvidia-x86_64.conf
+  else
+    _libdir="/usr/lib64"
+  fi
+  
   ldconfig
 
   # Create a symlink to the nvidia-drm_gbm.so (if not present)
   if [ ! -e /usr/lib/gbm/nvidia-drm_gbm.so ]; then
     gow_log "Creating symlink to nvidia-drm_gbm.so"
     mkdir -p /usr/lib/gbm
-    ln -sv ../libnvidia-allocator.so.1 /usr/lib/gbm/nvidia-drm_gbm.so
+    ln -sv ${_libdir}/libnvidia-allocator.so.1 /usr/lib/gbm/nvidia-drm_gbm.so
   fi
 
   # Create json config files

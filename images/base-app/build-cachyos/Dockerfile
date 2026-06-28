@@ -53,6 +53,7 @@ ARG REQUIRED_PACKAGES="\
     "
 
 RUN pacman -Syu --noconfirm $REQUIRED_PACKAGES && \
+    glib-compile-schemas /usr/share/glib-2.0/schemas/ && \
     pacman -Scc --noconfirm
 
 COPY configs /cfg

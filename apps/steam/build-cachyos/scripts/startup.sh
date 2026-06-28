@@ -4,7 +4,6 @@ set -e
 source /opt/gow/bash-lib/utils.sh
 
 gow_log "Steam startup.sh"
-
 # Recursively creating Steam necessary folders (https://github.com/ValveSoftware/steam-for-linux/issues/6492)
 mkdir -p "$HOME/.local/share/Steam/ubuntu12_32/steam-runtime"
 export WINEPREFIX="$HOME/.local/share/WolfSteam/pfx"
@@ -127,7 +126,12 @@ if [ -n "$RUN_GAMESCOPE" ]; then
 
   # Start Steam
   # shellcheck disable=SC2086
-  dbus-run-session -- steam ${STEAM_STARTUP_FLAGS}
+  if [ -n "$DEBUG_SLEEP" ]; then
+    gow_log "DEBUG_SLEEP is set, sleeping infinity instead of steam..."
+    sleep infinity
+  else
+    dbus-run-session -- steam ${STEAM_STARTUP_FLAGS}
+  fi
 
 elif [ -n "$RUN_SWAY" ]; then
   # Start IBus to enable showing the steam on-screen keyboard
@@ -139,8 +143,18 @@ elif [ -n "$RUN_SWAY" ]; then
 
   # Start Steam
   source /opt/gow/launch-comp.sh
-  launcher steam ${STEAM_STARTUP_FLAGS}
+  if [ -n "$DEBUG_SLEEP" ]; then
+    gow_log "DEBUG_SLEEP is set, running sleep infinity under compositor..."
+    launcher sleep infinity
+  else
+    launcher steam ${STEAM_STARTUP_FLAGS}
+  fi
 else
   # shellcheck disable=SC2086
-  exec steam ${STEAM_STARTUP_FLAGS}
+  if [ -n "$DEBUG_SLEEP" ]; then
+    gow_log "DEBUG_SLEEP is set, sleeping infinity..."
+    sleep infinity
+  else
+    exec steam ${STEAM_STARTUP_FLAGS}
+  fi
 fi
