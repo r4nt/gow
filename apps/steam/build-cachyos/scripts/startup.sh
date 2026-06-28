@@ -8,6 +8,10 @@ gow_log "Steam startup.sh"
 mkdir -p "$HOME/.local/share/Steam/ubuntu12_32/steam-runtime"
 export WINEPREFIX="$HOME/.local/share/WolfSteam/pfx"
 export STEAM_COMPAT_DATA_PATH="$WINEPREFIX"
+export XDG_DATA_DIRS=/var/lib/flatpak/exports/share:/home/retro/.local/share/flatpak/exports/share:/usr/local/share/:/usr/share/
+
+# Add Flathub repository for the user
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
 # Use the new big picture mode by default
 STEAM_STARTUP_FLAGS=${STEAM_STARTUP_FLAGS:-"-bigpicture"}

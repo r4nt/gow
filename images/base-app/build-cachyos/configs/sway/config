@@ -44,7 +44,7 @@ include /etc/sway/config-vars.d/*
 
     # Workspaces:
     # Switch to workspace 1-9 with Ctrl+Alt+number
-    bindsym Ctrl+Mod1+1 workspace number 1
+    bindsym Ctrl+Mod1+1 workspace main
     bindsym Ctrl+Mod1+2 workspace number 2
     bindsym Ctrl+Mod1+3 workspace number 3
     bindsym Ctrl+Mod1+4 workspace number 4
