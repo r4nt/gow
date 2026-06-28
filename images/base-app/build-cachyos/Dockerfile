@@ -42,7 +42,7 @@ ARG REQUIRED_PACKAGES="\
     mesa vulkan-mesa-layers vulkan-radeon vulkan-intel vulkan-swrast libva-mesa-driver \
     egl-gbm egl-wayland \
     gamescope \
-    sway \
+    sway swaybg gsettings-desktop-schemas \
     xorg-xwayland kitty nano \
     waybar mako noto-fonts xdg-desktop-portal xdg-desktop-portal-gtk psmisc \
     mangohud \

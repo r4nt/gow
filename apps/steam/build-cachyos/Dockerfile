@@ -34,11 +34,12 @@ fi
 pacman -Syu --noconfirm steam
 
 # Additional packages
-pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release
+pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity
 
 # Cleanup
 # We'll be using a custom steam startup script, the default `steam` script was failing
 rm -f $(which steam)
+rm -f /usr/bin/zenity && ln -s /usr/bin/true /usr/bin/zenity
 pacman -Scc --noconfirm
 _INSTALL_STEAM
 
