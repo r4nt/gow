@@ -50,7 +50,8 @@ pacman -Syu --noconfirm \
         wget \
         curl \
         jq \
-        shadow
+        shadow \
+        sudo
 
 echo "**** Install fonts ****"
 pacman -S --noconfirm ttf-liberation ttf-dejavu xorg-fonts-misc

@@ -20,6 +20,10 @@ if [[ "${UNAME}" != "root" ]]; then
     groupadd -f -g "${PGID}" ${UNAME}
     useradd -m -d ${HOME} -u "${PUID}" -g "${PGID}" -s /bin/bash ${UNAME}
 
+    gow_log "Allow ${UNAME} to run sudo commands without password"
+    echo "${UNAME} ALL=(ALL:ALL) NOPASSWD: ALL" > "/etc/sudoers.d/${UNAME}"
+    chmod 0440 "/etc/sudoers.d/${UNAME}"
+
     gow_log "Setting umask to ${UMASK}"
     umask "${UMASK}"
 
