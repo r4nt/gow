@@ -42,6 +42,18 @@ include /etc/sway/config-vars.d/*
     bindsym $mod+Shift+q kill
     bindsym Alt+F4 kill
 
+    # Workspaces:
+    # Switch to workspace 1-9 with Ctrl+Alt+number
+    bindsym Ctrl+Mod1+1 workspace number 1
+    bindsym Ctrl+Mod1+2 workspace number 2
+    bindsym Ctrl+Mod1+3 workspace number 3
+    bindsym Ctrl+Mod1+4 workspace number 4
+    bindsym Ctrl+Mod1+5 workspace number 5
+    bindsym Ctrl+Mod1+6 workspace number 6
+    bindsym Ctrl+Mod1+7 workspace number 7
+    bindsym Ctrl+Mod1+8 workspace number 8
+    bindsym Ctrl+Mod1+9 workspace number 9
+
     # Start your launcher
     # bindsym $mod+d exec $menu
 
