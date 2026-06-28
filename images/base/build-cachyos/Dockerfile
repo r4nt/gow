@@ -9,6 +9,9 @@ ENV \
     UMASK=000 \
     UNAME="retro" \
     HOME="/home/retro" \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
     TZ="Europe/London"
 
 ARG TARGETARCH TARGETVARIANT
@@ -20,6 +23,26 @@ RUN <<_INSTALL_PACKAGES
 #!/bin/bash
 set -e
 
+echo "**** Update package manager ****" \
+    && sed -i 's/^NoProgressBar/#NoProgressBar/g' /etc/pacman.conf \
+    && echo -e "[multilib]\nInclude = /etc/pacman.d/mirrorlist" >> /etc/pacman.conf
+
+echo "**** Configure locals ****" \
+    && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen \
+    && locale-gen
+
+echo "**** Install certificates ****" \
+    && pacman -Syu --noconfirm --needed \
+    ca-certificates
+
+echo "**** Section cleanup ****" \
+    && pacman -Scc --noconfirm \
+    && rm -fr /var/lib/pacman/sync/* \
+    && rm -fr /var/cache/pacman/pkg/*
+
+echo "**** Disable pacman sandboxed network for container builds ****"
+sed -i '/^\[options\]/a DisableSandboxNetwork' /etc/pacman.conf
+
 echo "**** Install base packages ****"
 pacman -Syu --noconfirm \
         ca-certificates \
@@ -28,6 +51,9 @@ pacman -Syu --noconfirm \
         curl \
         jq \
         shadow
+
+echo "**** Install fonts ****"
+pacman -S --noconfirm ttf-liberation ttf-dejavu xorg-fonts-misc
 
 echo "**** Install gosu ****"
 wget --progress=dot:giga \
@@ -38,8 +64,12 @@ chmod +x /usr/bin/gosu
 echo "**** Verify gosu works ****"
 gosu nobody true && echo "Working!"
 
-echo "**** Section cleanup ****"
-pacman -Scc --noconfirm
+echo "**** Section cleanup ****" \
+    && pacman -Scc --noconfirm \
+    && rm -fr /home/default/.cache/yay \
+    && rm -fr /var/lib/pacman/sync/* \
+    && rm -fr /var/cache/pacman/pkg/* \
+    && rm -rf /tmp/yay*
 
 echo
 _INSTALL_PACKAGES

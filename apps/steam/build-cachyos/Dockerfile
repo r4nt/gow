@@ -25,16 +25,11 @@ RUN <<_INSTALL_STEAM
 #!/bin/bash
 set -e
 
-# Enable multilib repo if not already enabled
-if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
-    echo -e "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist" >> /etc/pacman.conf
-fi
-
 # Update and install Steam
 pacman -Syu --noconfirm steam
 
 # Additional packages
-pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity
+pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils
 
 # Cleanup
 # We'll be using a custom steam startup script, the default `steam` script was failing
