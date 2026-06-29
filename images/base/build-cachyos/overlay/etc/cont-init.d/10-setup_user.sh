@@ -4,6 +4,10 @@ set -e
 
 gow_log "**** Configure default user ****"
 
+# Remount /proc/sys as read-write to allow bubblewrap (bwrap) to check namespace limits
+gow_log "Remounting /proc/sys as read-write for bubblewrap"
+mount -o remount,rw /proc/sys 2>/dev/null || true
+
 if [[ "${UNAME}" != "root" ]]; then
     PUID="${PUID:-1000}"
     PGID="${PGID:-1000}"

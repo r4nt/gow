@@ -29,12 +29,13 @@ set -e
 pacman -Syu --noconfirm steam
 
 # Additional packages
-pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim
+pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim bubblewrap
 
 # Cleanup
 # We'll be using a custom steam startup script, the default `steam` script was failing
 rm -f $(which steam)
 rm -f /usr/bin/zenity && ln -s /usr/bin/true /usr/bin/zenity
+rm -f /usr/share/dbus-1/system-services/org.freedesktop.Accounts.service
 pacman -Scc --noconfirm
 _INSTALL_STEAM
 
@@ -66,7 +67,7 @@ COPY --chmod=777 jupiter-biosupdate /usr/bin/jupiter-biosupdate
 COPY --chmod=777 jupiter-biosupdate /usr/bin/steamos-polkit-helpers/jupiter-biosupdate
 COPY --chmod=777 scripts/steamos-dbus-watchdog.sh /usr/local/bin/steamos-dbus-watchdog.sh
 COPY --chmod=777 scripts/steam.sh /usr/bin/steam
-COPY --from=bwrap-builder --chmod=4755 /root/bubblewrap/_builddir/bwrap /usr/bin/bwrap
+COPY --from=bwrap-builder --chmod=755 /root/bubblewrap/_builddir/bwrap /usr/bin/bwrap
 
 ENV XDG_RUNTIME_DIR=/tmp/.X11-unix
 
