@@ -29,7 +29,7 @@ set -e
 pacman -Syu --noconfirm steam
 
 # Additional packages
-pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim bubblewrap plasma-desktop
+pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim bubblewrap plasma-desktop qt6-wayland
 
 # Cleanup
 # We'll be using a custom steam startup script, the default `steam` script was failing
@@ -68,8 +68,6 @@ COPY --chmod=777 jupiter-biosupdate /usr/bin/steamos-polkit-helpers/jupiter-bios
 COPY --chmod=777 scripts/steamos-dbus-watchdog.sh /usr/local/bin/steamos-dbus-watchdog.sh
 COPY --chmod=777 scripts/steam.sh /usr/bin/steam
 COPY --from=bwrap-builder --chmod=755 /root/bubblewrap/_builddir/bwrap /usr/bin/bwrap
-
-ENV XDG_RUNTIME_DIR=/tmp/.X11-unix
 
 ARG IMAGE_SOURCE
 LABEL org.opencontainers.image.source=$IMAGE_SOURCE

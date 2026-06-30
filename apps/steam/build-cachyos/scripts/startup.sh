@@ -4,6 +4,7 @@ set -e
 source /opt/gow/bash-lib/utils.sh
 
 gow_log "Steam startup.sh"
+
 # Recursively creating Steam necessary folders (https://github.com/ValveSoftware/steam-for-linux/issues/6492)
 mkdir -p "$HOME/.local/share/Steam/ubuntu12_32/steam-runtime"
 export WINEPREFIX="$HOME/.local/share/WolfSteam/pfx"
@@ -67,7 +68,12 @@ export QT_IM_MODULE=steam
 export GTK_IM_MODULE=Steam
 
 
-if [ -n "$RUN_GAMESCOPE" ]; then
+if [ -n "$RUN_KDE" ]; then
+  gow_log "Starting KDE Plasma Desktop within Gamescope (foreground)..."
+  export KWIN_BACKEND=wayland
+  export XDG_SESSION_TYPE=wayland
+  exec gamescope -W "${GAMESCOPE_WIDTH:-1920}" -H "${GAMESCOPE_HEIGHT:-1080}" -r "${GAMESCOPE_REFRESH:-60}" -- dbus-run-session startplasma-wayland
+elif [ -n "$RUN_GAMESCOPE" ]; then
   # Enable support for xwayland isolation per-game in Steam
   # Note: This breaks without the additional steamdeck flags
   #export STEAM_MULTIPLE_XWAYLANDS=1
@@ -128,14 +134,11 @@ if [ -n "$RUN_GAMESCOPE" ]; then
   # Launch mango
   mangoapp &
 
-  # Start Steam / KDE
+  # Start Steam
   # shellcheck disable=SC2086
   if [ -n "$DEBUG_SLEEP" ]; then
     gow_log "DEBUG_SLEEP is set, sleeping infinity instead of steam..."
     sleep infinity
-  elif [ -n "$RUN_KDE" ]; then
-    gow_log "Starting KDE Plasma Desktop within Gamescope..."
-    dbus-run-session -- startplasma-wayland
   else
     dbus-run-session -- steam ${STEAM_STARTUP_FLAGS}
   fi
