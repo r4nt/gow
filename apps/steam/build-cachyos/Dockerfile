@@ -29,7 +29,7 @@ set -e
 pacman -Syu --noconfirm steam
 
 # Additional packages
-pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim bubblewrap
+pacman -S --noconfirm networkmanager bluez ibus polkit file pciutils lsb-release zenity cachyos-gaming-meta lib32-mesa-utils mesa-utils flatpak vim bubblewrap plasma-desktop
 
 # Cleanup
 # We'll be using a custom steam startup script, the default `steam` script was failing

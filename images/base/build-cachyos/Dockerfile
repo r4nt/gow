@@ -24,8 +24,7 @@ RUN <<_INSTALL_PACKAGES
 set -e
 
 echo "**** Update package manager ****" \
-    && sed -i 's/^NoProgressBar/#NoProgressBar/g' /etc/pacman.conf \
-    && echo -e "[multilib]\nInclude = /etc/pacman.d/mirrorlist" >> /etc/pacman.conf
+    && sed -i 's/^NoProgressBar/#NoProgressBar/g' /etc/pacman.conf
 
 echo "**** Configure locals ****" \
     && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen \

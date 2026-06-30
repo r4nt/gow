@@ -128,11 +128,14 @@ if [ -n "$RUN_GAMESCOPE" ]; then
   # Launch mango
   mangoapp &
 
-  # Start Steam
+  # Start Steam / KDE
   # shellcheck disable=SC2086
   if [ -n "$DEBUG_SLEEP" ]; then
     gow_log "DEBUG_SLEEP is set, sleeping infinity instead of steam..."
     sleep infinity
+  elif [ -n "$RUN_KDE" ]; then
+    gow_log "Starting KDE Plasma Desktop within Gamescope..."
+    dbus-run-session -- startplasma-wayland
   else
     dbus-run-session -- steam ${STEAM_STARTUP_FLAGS}
   fi

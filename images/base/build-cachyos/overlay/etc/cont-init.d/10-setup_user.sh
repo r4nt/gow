@@ -34,6 +34,11 @@ if [[ "${UNAME}" != "root" ]]; then
     gow_log "Ensure retro home directory is writable"
     chown "${PUID}:${PGID}" "${HOME}"
 
+    gow_log "Initialize XDG user directories"
+    if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+        gosu "${UNAME}" xdg-user-dirs-update || true
+    fi
+
     gow_log "Ensure XDG_RUNTIME_DIR is writable"
     chown -R "${PUID}:${PGID}" "${XDG_RUNTIME_DIR}"
 else
