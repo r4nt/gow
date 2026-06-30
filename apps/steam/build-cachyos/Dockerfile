@@ -59,7 +59,9 @@ RUN mkdir -p /opt/decky && \
     chmod 755 /opt/decky/PluginLoader
 
 COPY --chmod=777 scripts/startup.sh /opt/gow/startup-app.sh
+COPY --chmod=755 scripts/kde-startup.sh /opt/gow/kde-startup.sh
 COPY --chmod=777 scripts/system-services.sh /etc/cont-init.d/system-services.sh
+COPY sway-plasma.conf /etc/sway/plasma.conf
 COPY --chmod=777 steamos-update /usr/bin/steamos-update
 COPY --chmod=777 steamos-update /usr/bin/steamos-polkit-helpers/steamos-update
 COPY --chmod=777 steamos-session-select /usr/bin/steamos-session-select

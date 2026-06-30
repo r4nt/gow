@@ -69,10 +69,21 @@ export GTK_IM_MODULE=Steam
 
 
 if [ -n "$RUN_KDE" ]; then
-  gow_log "Starting KDE Plasma Desktop within Gamescope (foreground)..."
+  gow_log "Starting KDE Plasma Desktop within Sway (foreground)..."
+
   export KWIN_BACKEND=wayland
   export XDG_SESSION_TYPE=wayland
-  exec gamescope -W "${GAMESCOPE_WIDTH:-1920}" -H "${GAMESCOPE_HEIGHT:-1080}" -r "${GAMESCOPE_REFRESH:-60}" -- dbus-run-session startplasma-wayland
+  export SWAYSOCK=${XDG_RUNTIME_DIR}/sway.socket
+
+  # Build runtime sway config: prepend output resolution to the installed template
+  KDE_SWAY_CFG=$(mktemp /tmp/sway-plasma-XXXXXX.conf)
+  echo "output * mode ${GAMESCOPE_WIDTH:-1920}x${GAMESCOPE_HEIGHT:-1080} scale 1" > "$KDE_SWAY_CFG"
+  cat /etc/sway/plasma.conf >> "$KDE_SWAY_CFG"
+
+  gow_log "Env: WLR_BACKENDS=${WLR_BACKENDS:-<unset>} DISPLAY=${DISPLAY:-<unset>} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
+
+  dbus-run-session -- sway --unsupported-gpu --config "$KDE_SWAY_CFG"
+  gow_log "sway exited with code $?"
 elif [ -n "$RUN_GAMESCOPE" ]; then
   # Enable support for xwayland isolation per-game in Steam
   # Note: This breaks without the additional steamdeck flags
