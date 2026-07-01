@@ -9,6 +9,7 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 
 export KWIN_BACKEND=wayland
 export XDG_SESSION_TYPE=wayland
+export PROTON_ENABLE_WAYLAND=1
 export SWAYSOCK=${XDG_RUNTIME_DIR}/sway.socket
 
 KDE_SWAY_CFG=$(mktemp /tmp/sway-plasma-XXXXXX.conf)
@@ -17,7 +18,7 @@ cat /etc/sway/plasma.conf >> "$KDE_SWAY_CFG"
 
 gow_log "Env: WLR_BACKENDS=${WLR_BACKENDS:-<unset>} DISPLAY=${DISPLAY:-<unset>} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
 
-dbus-run-session -- sway --unsupported-gpu --config "$KDE_SWAY_CFG"
+dbus-run-session -- sway --unsupported-gpu --config "$KDE_SWAY_CFG" 
 gow_log "sway exited with code $?"
 
 if [ -n "$DEBUG_SLEEP" ]; then

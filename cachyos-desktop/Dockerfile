@@ -1,3 +1,14 @@
+FROM cachyos/cachyos:latest AS ptrlock-builder
+
+RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf && \
+    pacman -Syu --noconfirm gcc pkgconf sdl2 && \
+    pacman -Scc --noconfirm
+
+COPY tools/ptrlock-test.c /build/ptrlock-test.c
+RUN gcc -O2 -o /build/ptrlock /build/ptrlock-test.c $(sdl2-config --cflags --libs)
+
+##############################################################################
+
 FROM cachyos/cachyos:latest
 
 ENV \
@@ -9,7 +20,8 @@ ENV \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     TZ="Europe/London" \
-    XDG_RUNTIME_DIR="/run/user/1000"
+    XDG_RUNTIME_DIR="/run/user/1000" \
+    GOW_REQUIRED_DEVICES="/dev/input/* /dev/dri/* /dev/nvidia*"
 
 ARG TARGETARCH TARGETVARIANT
 ARG GOSU_VERSION=1.14
@@ -50,6 +62,10 @@ mkdir -p "${XDG_RUNTIME_DIR}"
 chmod 700 "${XDG_RUNTIME_DIR}"
 _BASE
 
+COPY --from=ptrlock-builder --chmod=755 /build/ptrlock /usr/local/bin/ptrlock
+COPY --chmod=755 tools/kwin_wayland /usr/bin/kwin_wayland
+COPY --chmod=755 tools/libkwin.so.6.7.2 /usr/lib/libkwin.so.6.7.2
+RUN ln -sf libkwin.so.6.7.2 /usr/lib/libkwin.so.6
 COPY --chmod=777 overlay /
 COPY sway-plasma.conf /etc/sway/plasma.conf
 COPY --chmod=755 scripts/kde-startup.sh /opt/gow/kde-startup.sh
