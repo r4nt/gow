@@ -34,7 +34,9 @@ pacman -Syu --noconfirm \
     xorg-xwayland \
     xdg-desktop-portal xdg-desktop-portal-kde xdg-user-dirs \
     dbus libcap procps-ng \
-    plasma-desktop qt6-wayland konsole fish \
+    plasma-meta qt6-wayland konsole fish \
+    ibus bubblewrap pciutils mesa-utils lib32-mesa-utils mangohud sdl2 vim \
+    steam \
     ttf-liberation ttf-dejavu
 
 pacman -Scc --noconfirm

@@ -5,6 +5,8 @@ source /opt/gow/bash-lib/utils.sh
 
 gow_log "KDE Desktop startup"
 
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
 export KWIN_BACKEND=wayland
 export XDG_SESSION_TYPE=wayland
 export SWAYSOCK=${XDG_RUNTIME_DIR}/sway.socket

@@ -35,7 +35,14 @@ if [[ "${UNAME}" != "root" ]]; then
     gow_log "Setting umask to ${UMASK}"
     umask "${UMASK}"
 
-    gow_log "Ensure retro home directory is writable"
+    # If UNAME differs from retro, bind-mount /home/retro (Wolf's volume) onto
+    # /home/${UNAME} so Wolf's persistent mounts are visible at the real home path.
+    if [[ "${UNAME}" != "retro" ]]; then
+        mkdir -p /home/retro "${HOME}"
+        mount --bind /home/retro "${HOME}"
+    fi
+
+    gow_log "Ensure home directory is writable"
     chown "${PUID}:${PGID}" "${HOME}"
 
     gow_log "Initialize XDG user directories"
