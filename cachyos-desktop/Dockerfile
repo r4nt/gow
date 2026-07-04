@@ -9,6 +9,40 @@ RUN gcc -O2 -o /build/ptrlock /build/ptrlock-test.c $(sdl2-config --cflags --lib
 
 ##############################################################################
 
+FROM cachyos/cachyos:latest AS kwin-builder
+
+RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf && \
+    sed -i '/^\[options\]/a DisableSandboxNetwork' /etc/pacman.conf && \
+    pacman -Syu --noconfirm \
+        cmake extra-cmake-modules \
+        kwin plasma-wayland-protocols wayland-protocols \
+        vulkan-headers \
+        && \
+    pacman -Scc --noconfirm
+
+WORKDIR /build
+
+RUN curl -L https://download.kde.org/stable/plasma/6.7.2/kwin-6.7.2.tar.xz \
+    | tar xJ
+
+COPY tools/kwin-pointer-lock.patch /build/kwin-pointer-lock.patch
+
+RUN cd kwin-6.7.2 && \
+    patch -p1 < /build/kwin-pointer-lock.patch && \
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DBUILD_TESTING=OFF \
+        -DKWIN_BUILD_KCMS=OFF \
+        -DKWIN_BUILD_GLOBALSHORTCUTS=OFF \
+        -DVulkan_INCLUDE_DIR=/usr/include \
+        -DVulkan_LIBRARY=/usr/lib/libvulkan.so.1 \
+        && \
+    cmake --build build --parallel "$(nproc)" --target kwin_wayland
+
+##############################################################################
+
 FROM cachyos/cachyos:latest
 
 ENV \
@@ -63,8 +97,8 @@ chmod 700 "${XDG_RUNTIME_DIR}"
 _BASE
 
 COPY --from=ptrlock-builder --chmod=755 /build/ptrlock /usr/local/bin/ptrlock
-COPY --chmod=755 tools/kwin_wayland /usr/bin/kwin_wayland
-COPY --chmod=755 tools/libkwin.so.6.7.2 /usr/lib/libkwin.so.6.7.2
+COPY --from=kwin-builder --chmod=755 /build/kwin-6.7.2/build/bin/kwin_wayland /usr/bin/kwin_wayland
+COPY --from=kwin-builder --chmod=755 /build/kwin-6.7.2/build/bin/libkwin.so.6.7.2 /usr/lib/libkwin.so.6.7.2
 RUN ln -sf libkwin.so.6.7.2 /usr/lib/libkwin.so.6
 COPY --chmod=777 overlay /
 COPY sway-plasma.conf /etc/sway/plasma.conf

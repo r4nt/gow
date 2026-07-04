@@ -1,0 +1,408 @@
+From c372c876d9025840d318b7016ffb5bb9664fdaca Mon Sep 17 00:00:00 2001
+From: Manuel Klimek <klimek@box4.net>
+Date: Thu, 2 Jul 2026 20:43:50 +0200
+Subject: [PATCH] wayland: forward pointer lock to host compositor when running
+ nested
+
+When kwin runs nested inside another Wayland compositor, pointer lock
+requests from clients were not forwarded to the host compositor. This
+caused the cursor to escape the window in applications relying on
+relative mouse input, such as games running via Proton.
+
+Add a pointerLockStateChanged signal to PointerInputRedirection, emitted
+whenever a client acquires or releases a pointer lock. Connect it in
+WaylandInputBackend::initialize() so WaylandBackend can lock/unlock the
+pointer on the host compositor and enable relative pointer events for the
+duration of the lock.
+
+Add integration tests verifying that the signal fires on lock state
+transitions and that relative motion events are forwarded to clients
+while the pointer is locked.
+---
+ autotests/integration/kwin_wayland_test.h     |   4 +
+ .../integration/pointer_constraints_test.cpp  | 103 +++++++++++++++++-
+ autotests/integration/test_helpers.cpp        |  15 +++
+ src/backends/wayland/wayland_backend.cpp      |  33 ++++--
+ src/backends/wayland/wayland_backend.h        |   2 +
+ src/pointer_input.cpp                         |   6 +-
+ src/pointer_input.h                           |   3 +
+ 7 files changed, 154 insertions(+), 12 deletions(-)
+
+diff --git a/autotests/integration/kwin_wayland_test.h b/autotests/integration/kwin_wayland_test.h
+index 4c2cd9359b..7a2e34d088 100644
+--- a/autotests/integration/kwin_wayland_test.h
++++ b/autotests/integration/kwin_wayland_test.h
+@@ -68,6 +68,7 @@ class PlasmaShell;
+ class PlasmaWindowManagement;
+ class Pointer;
+ class PointerConstraints;
++class RelativePointerManager;
+ class Registry;
+ class Seat;
+ class ShadowManager;
+@@ -826,6 +827,7 @@ enum class AdditionalWaylandInterface : uint64_t {
+     LinuxDmabuf = 1ull << 31,
+     ColorRepresentation = 1ull << 32,
+     Viewporter = 1ull << 33,
++    RelativePointerManager = 1ull << 34,
+ };
+ Q_DECLARE_FLAGS(AdditionalWaylandInterfaces, AdditionalWaylandInterface)
+ 
+@@ -1156,6 +1158,7 @@ struct Connection
+     KWayland::Client::PlasmaShell *plasmaShell = nullptr;
+     KWayland::Client::PlasmaWindowManagement *windowManagement = nullptr;
+     KWayland::Client::PointerConstraints *pointerConstraints = nullptr;
++    KWayland::Client::RelativePointerManager *relativePointerManager = nullptr;
+     KWayland::Client::Registry *registry = nullptr;
+     WaylandOutputManagementV2 *outputManagementV2 = nullptr;
+     QThread *thread = nullptr;
+@@ -1249,6 +1252,7 @@ KWayland::Client::DataDeviceManager *waylandDataDeviceManager();
+ KWayland::Client::PlasmaShell *waylandPlasmaShell();
+ KWayland::Client::PlasmaWindowManagement *waylandWindowManagement();
+ KWayland::Client::PointerConstraints *waylandPointerConstraints();
++KWayland::Client::RelativePointerManager *waylandRelativePointerManager();
+ KWayland::Client::AppMenuManager *waylandAppMenuManager();
+ WaylandOutputManagementV2 *waylandOutputManagementV2();
+ KWayland::Client::TextInputManager *waylandTextInputManager();
+diff --git a/autotests/integration/pointer_constraints_test.cpp b/autotests/integration/pointer_constraints_test.cpp
+index f7a43e3032..af52dee19b 100644
+--- a/autotests/integration/pointer_constraints_test.cpp
++++ b/autotests/integration/pointer_constraints_test.cpp
+@@ -23,6 +23,7 @@
+ #include <KWayland/Client/pointer.h>
+ #include <KWayland/Client/pointerconstraints.h>
+ #include <KWayland/Client/region.h>
++#include <KWayland/Client/relativepointer.h>
+ #include <KWayland/Client/seat.h>
+ #include <KWayland/Client/shm_pool.h>
+ #include <KWayland/Client/surface.h>
+@@ -47,6 +48,8 @@ private Q_SLOTS:
+     void testConfinedPointer_data();
+     void testConfinedPointer();
+     void testLockedPointer();
++    void testLockedPointerStateChangedSignal();
++    void testLockedPointerRelativeMotion();
+     void testCloseWindowWithLockedPointer();
+ };
+ 
+@@ -77,7 +80,9 @@ void TestPointerConstraints::initTestCase()
+ 
+ void TestPointerConstraints::init()
+ {
+-    QVERIFY(Test::setupWaylandConnection(Test::AdditionalWaylandInterface::Seat | Test::AdditionalWaylandInterface::PointerConstraints));
++    QVERIFY(Test::setupWaylandConnection(Test::AdditionalWaylandInterface::Seat
++                                         | Test::AdditionalWaylandInterface::PointerConstraints
++                                         | Test::AdditionalWaylandInterface::RelativePointerManager));
+     QVERIFY(Test::waitForWaylandPointer());
+ 
+     workspace()->setActiveOutput(QPoint(640, 512));
+@@ -289,7 +294,6 @@ void TestPointerConstraints::testLockedPointer()
+     QVERIFY(lockedSpy.wait());
+ 
+     // try to move the pointer
+-    // TODO: add relative pointer
+     KWin::input()->pointer()->warp(window->frameGeometry().center() + QPoint(1, 1));
+     QCOMPARE(KWin::Cursors::self()->mouse()->pos(), window->frameGeometry().center());
+ 
+@@ -328,6 +332,100 @@ void TestPointerConstraints::testLockedPointer()
+     QCOMPARE(KWin::Cursors::self()->mouse()->pos(), window->frameGeometry().center());
+ }
+ 
++void TestPointerConstraints::testLockedPointerStateChangedSignal()
++{
++    // Verify that PointerInputRedirection::pointerLockStateChanged fires when a
++    // client acquires and releases a pointer lock.
++    std::unique_ptr<KWayland::Client::Surface> surface(Test::createSurface());
++    std::unique_ptr<Test::XdgToplevel> shellSurface(Test::createXdgToplevelSurface(surface.get()));
++    std::unique_ptr<KWayland::Client::Pointer> pointer(Test::waylandSeat()->createPointer());
++    std::unique_ptr<KWayland::Client::LockedPointer> lockedPointer(
++        Test::waylandPointerConstraints()->lockPointer(surface.get(), pointer.get(), nullptr,
++                                                       KWayland::Client::PointerConstraints::LifeTime::OneShot));
++
++    auto window = Test::renderAndWaitForShown(surface.get(), QSize(100, 100), Qt::blue);
++    QVERIFY(window);
++
++    QSignalSpy lockStateSpy(input()->pointer(), &PointerInputRedirection::pointerLockStateChanged);
++
++    // Warp pointer into window to trigger lock. The signal fires synchronously.
++    KWin::input()->pointer()->warp(window->frameGeometry().center());
++    QCOMPARE(input()->pointer()->isConstrained(), true);
++    if (lockStateSpy.isEmpty()) {
++        QVERIFY(lockStateSpy.wait());
++    }
++    QCOMPARE(lockStateSpy.count(), 1);
++    QCOMPARE(lockStateSpy.first().first().toBool(), true);
++
++    // Deactivating the window should unlock and fire the signal again.
++    workspace()->activateWindow(nullptr);
++    QCOMPARE(input()->pointer()->isConstrained(), false);
++    if (lockStateSpy.count() < 2) {
++        QVERIFY(lockStateSpy.wait());
++    }
++    QCOMPARE(lockStateSpy.last().first().toBool(), false);
++}
++
++void TestPointerConstraints::testLockedPointerRelativeMotion()
++{
++    // Verify that relative motion events are forwarded to clients while the pointer is locked,
++    // and that the absolute cursor position does not change.
++    std::unique_ptr<KWayland::Client::Surface> surface(Test::createSurface());
++    std::unique_ptr<Test::XdgToplevel> shellSurface(Test::createXdgToplevelSurface(surface.get()));
++    std::unique_ptr<KWayland::Client::Pointer> pointer(Test::waylandSeat()->createPointer());
++    std::unique_ptr<KWayland::Client::LockedPointer> lockedPointer(
++        Test::waylandPointerConstraints()->lockPointer(surface.get(), pointer.get(), nullptr,
++                                                       KWayland::Client::PointerConstraints::LifeTime::Persistent));
++    std::unique_ptr<KWayland::Client::RelativePointer> relativePointer(
++        Test::waylandRelativePointerManager()->createRelativePointer(pointer.get()));
++
++    QSignalSpy lockedSpy(lockedPointer.get(), &KWayland::Client::LockedPointer::locked);
++    QSignalSpy relativeMotionSpy(relativePointer.get(), &KWayland::Client::RelativePointer::relativeMotion);
++
++    auto window = Test::renderAndWaitForShown(surface.get(), QSize(100, 100), Qt::blue);
++    QVERIFY(window);
++
++    // Acquire the lock.
++    KWin::input()->pointer()->warp(window->frameGeometry().center());
++    QCOMPARE(input()->pointer()->isConstrained(), true);
++    QVERIFY(lockedSpy.wait());
++
++    const QPointF lockedPos = KWin::Cursors::self()->mouse()->pos();
++
++    // Inject relative motion while locked and verify it is forwarded.
++    quint32 timestamp = 1;
++    Test::pointerMotionRelative(QPointF(10, 5), timestamp++);
++    QVERIFY(relativeMotionSpy.wait());
++    // At least one relativeMotion event must carry the injected delta.
++    const auto hasDelta10_5 = [&]() {
++        for (const auto &call : relativeMotionSpy) {
++            if (call.first().toSizeF() == QSizeF(10, 5)) {
++                return true;
++            }
++        }
++        return false;
++    };
++    QVERIFY(hasDelta10_5());
++
++    // The absolute cursor position must not change while locked.
++    QCOMPARE(KWin::Cursors::self()->mouse()->pos(), lockedPos);
++
++    // A second relative motion event is also forwarded.
++    relativeMotionSpy.clear();
++    Test::pointerMotionRelative(QPointF(-3, 7), timestamp++);
++    QVERIFY(relativeMotionSpy.wait());
++    const auto hasDeltaMinus3_7 = [&]() {
++        for (const auto &call : relativeMotionSpy) {
++            if (call.first().toSizeF() == QSizeF(-3, 7)) {
++                return true;
++            }
++        }
++        return false;
++    };
++    QVERIFY(hasDeltaMinus3_7());
++    QCOMPARE(KWin::Cursors::self()->mouse()->pos(), lockedPos);
++}
++
+ void TestPointerConstraints::testCloseWindowWithLockedPointer()
+ {
+     // test case which verifies that the pointer gets unlocked when the window for it gets closed
+@@ -359,4 +457,5 @@ void TestPointerConstraints::testCloseWindowWithLockedPointer()
+ }
+ 
+ WAYLANDTEST_MAIN(TestPointerConstraints)
++
+ #include "pointer_constraints_test.moc"
+diff --git a/autotests/integration/test_helpers.cpp b/autotests/integration/test_helpers.cpp
+index 6b51b1e609..d33955479c 100644
+--- a/autotests/integration/test_helpers.cpp
++++ b/autotests/integration/test_helpers.cpp
+@@ -38,6 +38,7 @@
+ #include <KWayland/Client/pointer.h>
+ #include <KWayland/Client/pointerconstraints.h>
+ #include <KWayland/Client/registry.h>
++#include <KWayland/Client/relativepointer.h>
+ #include <KWayland/Client/seat.h>
+ #include <KWayland/Client/shadow.h>
+ #include <KWayland/Client/shm_pool.h>
+@@ -649,6 +650,13 @@ std::unique_ptr<Connection> Connection::setup(AdditionalWaylandInterfaces flags)
+             return nullptr;
+         }
+     }
++    if (flags.testFlag(AdditionalWaylandInterface::RelativePointerManager)) {
++        connection->relativePointerManager = registry->createRelativePointerManager(registry->interface(KWayland::Client::Registry::Interface::RelativePointerManagerUnstableV1).name,
++                                                                                    registry->interface(KWayland::Client::Registry::Interface::RelativePointerManagerUnstableV1).version);
++        if (!connection->relativePointerManager->isValid()) {
++            return nullptr;
++        }
++    }
+     if (flags.testFlag(AdditionalWaylandInterface::AppMenu)) {
+         connection->appMenu = registry->createAppMenuManager(registry->interface(KWayland::Client::Registry::Interface::AppMenu).name, registry->interface(KWayland::Client::Registry::Interface::AppMenu).version);
+         if (!connection->appMenu->isValid()) {
+@@ -681,6 +689,8 @@ Connection::~Connection()
+     dataDeviceManager = nullptr;
+     delete pointerConstraints;
+     pointerConstraints = nullptr;
++    delete relativePointerManager;
++    relativePointerManager = nullptr;
+     delete xdgShell;
+     xdgShell = nullptr;
+     delete shadowManager;
+@@ -839,6 +849,11 @@ KWayland::Client::PointerConstraints *waylandPointerConstraints()
+     return s_waylandConnection->pointerConstraints;
+ }
+ 
++KWayland::Client::RelativePointerManager *waylandRelativePointerManager()
++{
++    return s_waylandConnection->relativePointerManager;
++}
++
+ KWayland::Client::AppMenuManager *waylandAppMenuManager()
+ {
+     return s_waylandConnection->appMenu;
+diff --git a/src/backends/wayland/wayland_backend.cpp b/src/backends/wayland/wayland_backend.cpp
+index 856fb68710..ac2ada5c5d 100644
+--- a/src/backends/wayland/wayland_backend.cpp
++++ b/src/backends/wayland/wayland_backend.cpp
+@@ -13,6 +13,7 @@
+ #include "core/gpumanager.h"
+ #include "core/renderdevice.h"
+ #include "input.h"
++#include "pointer_input.h"
+ #include "wayland-client/linuxdmabuf.h"
+ #include "wayland_display.h"
+ #include "wayland_egl_backend.h"
+@@ -104,6 +105,9 @@ WaylandInputDevice::WaylandInputDevice(KWayland::Client::Pointer *pointer, Wayla
+         }
+     });
+     connect(pointer, &Pointer::motion, this, [this](const QPointF &relativeToSurface, quint32 time) {
++        if (m_seat->relativePointerDevice()) {
++            return; // relative pointer handles all motion when active
++        }
+         WaylandOutput *output = m_seat->backend()->findOutput(m_pointer->enteredSurface());
+         Q_ASSERT(output);
+         const auto subsurface = m_seat->backend()->findSubSurface(m_pointer->enteredSurface());
+@@ -306,6 +310,8 @@ void WaylandInputBackend::initialize()
+ 
+     connect(seat, &WaylandSeat::deviceAdded, this, &InputBackend::deviceAdded);
+     connect(seat, &WaylandSeat::deviceRemoved, this, &InputBackend::deviceRemoved);
++
++    m_backend->connectPointerLock();
+ }
+ 
+ WaylandSeat::WaylandSeat(KWayland::Client::Seat *nativeSeat, WaylandBackend *backend)
+@@ -453,14 +459,6 @@ bool WaylandBackend::initialize()
+     QObject::connect(dispatcher, &QAbstractEventDispatcher::aboutToBlock, m_display.get(), &WaylandDisplay::flush);
+     QObject::connect(dispatcher, &QAbstractEventDispatcher::awake, m_display.get(), &WaylandDisplay::flush);
+ 
+-    connect(this, &WaylandBackend::pointerLockChanged, this, [this](bool locked) {
+-        if (locked) {
+-            m_seat->createRelativePointer();
+-        } else {
+-            m_seat->destroyRelativePointer();
+-        }
+-    });
+-
+     return true;
+ }
+ 
+@@ -584,6 +582,25 @@ void WaylandBackend::togglePointerLock()
+     m_pointerLockRequested = !m_pointerLockRequested;
+ }
+ 
++void WaylandBackend::connectPointerLock()
++{
++    connect(input()->pointer(), &PointerInputRedirection::pointerLockStateChanged,
++            this, &WaylandBackend::updatePointerLock);
++}
++
++void WaylandBackend::updatePointerLock(bool locked)
++{
++    if (locked != m_pointerLockRequested) {
++        if (locked) {
++            m_seat->createRelativePointer();
++        }
++        togglePointerLock();
++        if (!locked) {
++            m_seat->destroyRelativePointer();
++        }
++    }
++}
++
+ QList<CompositingType> WaylandBackend::supportedCompositors() const
+ {
+     QList<CompositingType> ret;
+diff --git a/src/backends/wayland/wayland_backend.h b/src/backends/wayland/wayland_backend.h
+index 288c55a13e..15e9685d87 100644
+--- a/src/backends/wayland/wayland_backend.h
++++ b/src/backends/wayland/wayland_backend.h
+@@ -229,6 +229,7 @@ public:
+ 
+     bool supportsPointerLock();
+     void togglePointerLock();
++    void connectPointerLock();
+ 
+     QList<CompositingType> supportedCompositors() const override;
+ 
+@@ -258,6 +259,7 @@ Q_SIGNALS:
+     void pointerLockChanged(bool locked);
+ 
+ private:
++    void updatePointerLock(bool locked);
+     void createOutputs();
+     void destroyOutputs();
+     WaylandOutput *createOutput(const QString &name, const QSize &size, qreal scale, bool fullscreen);
+diff --git a/src/pointer_input.cpp b/src/pointer_input.cpp
+index 4d5660ea3c..76315a1965 100644
+--- a/src/pointer_input.cpp
++++ b/src/pointer_input.cpp
+@@ -45,9 +45,8 @@
+ #include <QPainter>
+ #include <QWindow>
+ 
+-#include <linux/input.h>
+-
+ #include <cmath>
++#include <linux/input.h>
+ 
+ namespace KWin
+ {
+@@ -768,6 +767,7 @@ void PointerInputRedirection::updatePointerConstraints()
+                 const auto hint = lock->cursorPositionHint();
+                 lock->setLocked(false);
+                 m_locked = false;
++                Q_EMIT pointerLockStateChanged(false);
+                 disconnectLockedPointerAboutToBeUnboundConnection();
+                 if (hint.x() >= 0 && hint.y() >= 0 && focus() && hint.x() < focus()->width() && hint.y() < focus()->height()) {
+                     processWarp(focus()->mapFromLocal(hint), waylandServer()->seat()->timestamp());
+@@ -778,6 +778,7 @@ void PointerInputRedirection::updatePointerConstraints()
+         if (canConstrain && lock->region().contains(focus()->mapToLocal(m_pos))) {
+             lock->setLocked(true);
+             m_locked = true;
++            Q_EMIT pointerLockStateChanged(true);
+ 
+             // The client might cancel pointer locking from its side by unbinding the LockedPointerInterface.
+             // In this case the cached cursor position hint must be fetched before the resource goes away
+@@ -797,6 +798,7 @@ void PointerInputRedirection::updatePointerConstraints()
+         }
+     } else {
+         m_locked = false;
++        Q_EMIT pointerLockStateChanged(false);
+         disconnectLockedPointerAboutToBeUnboundConnection();
+     }
+ }
+diff --git a/src/pointer_input.h b/src/pointer_input.h
+index 8d4320c766..a6e13b65a9 100644
+--- a/src/pointer_input.h
++++ b/src/pointer_input.h
+@@ -148,6 +148,9 @@ public:
+      */
+     void processFrame(KWin::InputDevice *device = nullptr);
+ 
++Q_SIGNALS:
++    void pointerLockStateChanged(bool locked);
++
+ private:
+     enum class EdgeBarrierType {
+         NormalBarrier,
+-- 
+2.54.0
+
